@@ -1,0 +1,9 @@
+active_modules:
+  probe:
+    module: ProbeModule
+  user:
+    module: ExampleUser
+    connection:
+      example:
+        - module_id: probe
+          implementation_id: example
