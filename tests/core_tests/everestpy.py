@@ -15,6 +15,8 @@ async def test_everestpy_01(everest_core: EverestCore):
     with pytest.raises(Exception):
         probe_module.start()
 
+@pytest.mark.asyncio
+@pytest.mark.everest_core_config('config-probe.yaml')
 async def test_everestpy_02(everest_core: EverestCore):
     everest_core.start(standalone_module='probe')
     probe_module = ProbeModule(everest_core.get_runtime_session())
