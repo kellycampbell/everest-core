@@ -3,7 +3,7 @@ active_modules:
     module: ProbeModule
   user:
     module: ExampleUser
-    connection:
+    connections:
       example:
         - module_id: probe
           implementation_id: example
