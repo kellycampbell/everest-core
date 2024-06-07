@@ -22,3 +22,10 @@ async def test_everestpy_02(everest_core: EverestCore):
     probe_module = ProbeModule(everest_core.get_runtime_session())
     probe_module.implement_command('example', 'uses_something', lambda: True)
     probe_module.start()
+
+@pytest.mark.asyncio
+@pytest.mark.everest_core_config('config-probe.yaml')
+async def test_everestpy_03(everest_core: EverestCore):
+    everest_core.start(standalone_module='probe')
+    probe_module = ProbeModule(everest_core.get_runtime_session())
+    probe_module.start()
