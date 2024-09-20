@@ -269,6 +269,7 @@ void API::init() {
     std::vector<std::string> connectors;
     std::string var_connectors = this->api_base + "connectors";
 
+    int evse_id = 1;
     for (auto& evse : this->r_evse_manager) {
         auto& session_info = this->info.emplace_back(std::make_unique<SessionInfo>());
         auto& hw_caps = this->hw_capabilities_str.emplace_back("");
@@ -474,10 +475,11 @@ void API::init() {
         });
 
         std::string cmd_set_limit = cmd_base + "set_limit_amps";
-        this->mqtt.subscribe(cmd_set_limit, [&evse](const std::string& data) {
+        this->mqtt.subscribe(cmd_set_limit, [&evse, &r_evse_manager_energy_sink = this->r_evse_manager_energy_sink,
+                                             evse_id](const std::string& data) {
             try {
                 const auto external_limits = get_external_limits(data, false);
-                evse->call_set_external_limits(external_limits);
+                r_evse_manager_energy_sink.at(evse_id - 1)->call_set_external_limits(external_limits);
             } catch (const std::invalid_argument& e) {
                 EVLOG_warning << "Invalid limit: No conversion of given input could be performed.";
             } catch (const std::out_of_range& e) {
@@ -486,16 +488,18 @@ void API::init() {
         });
 
         std::string cmd_set_limit_watts = cmd_base + "set_limit_watts";
-        this->mqtt.subscribe(cmd_set_limit_watts, [&evse](const std::string& data) {
-            try {
-                const auto external_limits = get_external_limits(data, true);
-                evse->call_set_external_limits(external_limits);
-            } catch (const std::invalid_argument& e) {
-                EVLOG_warning << "Invalid limit: No conversion of given input could be performed.";
-            } catch (const std::out_of_range& e) {
-                EVLOG_warning << "Invalid limit: Out of range.";
-            }
-        });
+        this->mqtt.subscribe(
+            cmd_set_limit_watts,
+            [&evse, &r_evse_manager_energy_sink = this->r_evse_manager_energy_sink, evse_id](const std::string& data) {
+                try {
+                    const auto external_limits = get_external_limits(data, true);
+                    r_evse_manager_energy_sink.at(evse_id - 1)->call_set_external_limits(external_limits); // FIX access
+                } catch (const std::invalid_argument& e) {
+                    EVLOG_warning << "Invalid limit: No conversion of given input could be performed.";
+                } catch (const std::out_of_range& e) {
+                    EVLOG_warning << "Invalid limit: Out of range.";
+                }
+            });
         std::string cmd_force_unlock = cmd_base + "force_unlock";
         this->mqtt.subscribe(cmd_force_unlock, [&evse](const std::string& data) {
             int connector_id = 1;
@@ -549,6 +553,7 @@ void API::init() {
                 });
             }
         }
+        evse_id++;
     }
 
     std::string var_ocpp_connection_status = this->api_base + "ocpp/var/connection_status";
