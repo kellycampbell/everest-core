@@ -109,57 +109,62 @@ void ErrorHandling::process_error() {
     }
 }
 
-// Check all errors from p_evse and all requirements to see if they block charging
-std::optional<std::string> ErrorHandling::errors_prevent_charging() {
+namespace detail {
+template <typename T> struct ErrorsToCheck {
+    T& unit;
+    const ErrorList& errors_to_ignore;
+};
 
-    auto is_fatal = [](auto errors, auto ignore_list) -> std::optional<std::string> {
-        for (const auto e : errors) {
-            if (std::none_of(ignore_list.begin(), ignore_list.end(), [e](const auto& ign) { return e->type == ign; })) {
-                return e->type;
-            }
-        }
-        return std::nullopt;
-    };
+template <typename T> ErrorsToCheck(T&, const ErrorList&) -> ErrorsToCheck<T>;
 
-    auto fatal = is_fatal(p_evse->error_state_monitor->get_active_errors(), ignore_errors.evse);
-    if (fatal) {
-        return fatal;
-    }
-
-    fatal = is_fatal(r_bsp->error_state_monitor->get_active_errors(), ignore_errors.bsp);
-    if (fatal) {
-        return fatal;
-    }
-
-    if (r_connector_lock.size() > 0) {
-        fatal = is_fatal(r_connector_lock[0]->error_state_monitor->get_active_errors(), ignore_errors.connector_lock);
-        if (fatal) {
-            return fatal;
+std::optional<std::string> get_first_fatal_error(const std::list<Everest::error::ErrorPtr>& active_errors,
+                                                 const ErrorList& errors_to_ignore) {
+    for (const auto& error : active_errors) {
+        if (std::none_of(std::begin(errors_to_ignore), std::end(errors_to_ignore),
+                         [&error](const auto& error_to_ignore) { return error->type == error_to_ignore; })) {
+            return error->type;
         }
     }
 
-    if (r_ac_rcd.size() > 0) {
-        fatal = is_fatal(r_ac_rcd[0]->error_state_monitor->get_active_errors(), ignore_errors.ac_rcd);
-        if (fatal) {
-            return fatal;
-        }
-    }
+    return std::nullopt;
+}
 
-    if (r_imd.size() > 0) {
-        fatal = is_fatal(r_imd[0]->error_state_monitor->get_active_errors(), ignore_errors.imd);
-        if (fatal) {
-            return fatal;
-        }
-    }
+template <typename T> auto get_first_fatal_error(ErrorsToCheck<T>& set) {
+    return get_first_fatal_error(set.unit.error_state_monitor->get_active_errors(), set.errors_to_ignore);
+}
 
-    if (r_powersupply.size() > 0) {
-        fatal = is_fatal(r_powersupply[0]->error_state_monitor->get_active_errors(), ignore_errors.powersupply);
+// specialization for units contained in a vector
+template <typename T> std::optional<std::string> get_first_fatal_error(ErrorsToCheck<const std::vector<T>>& set) {
+    for (const auto& item : set.unit) {
+        const auto fatal = get_first_fatal_error(ErrorsToCheck{*item, set.errors_to_ignore});
         if (fatal) {
             return fatal;
         }
     }
 
     return std::nullopt;
+}
+
+template <typename... Ts> auto get_first_fatal_error(ErrorsToCheck<Ts>... sets) {
+    std::optional<std::string> fatal;
+    // the following line makes use of short-circuiting in boolean expression
+    (((fatal = get_first_fatal_error(sets)) || ...));
+    return fatal;
+}
+} // namespace detail
+
+// Check all errors from p_evse and all requirements to see if they block charging
+std::optional<std::string> ErrorHandling::errors_prevent_charging() {
+    /* clang-format off */
+    return get_first_fatal_error(
+        detail::ErrorsToCheck{*p_evse, ignore_errors.evse},
+        detail::ErrorsToCheck{*r_bsp, ignore_errors.bsp},
+        detail::ErrorsToCheck{r_connector_lock, ignore_errors.connector_lock},
+        detail::ErrorsToCheck{r_ac_rcd, ignore_errors.ac_rcd},
+        detail::ErrorsToCheck{r_imd, ignore_errors.imd},
+        detail::ErrorsToCheck{r_imd, ignore_errors.imd}
+    );
+    /* clang-format on */
 }
 
 void ErrorHandling::raise_inoperative_error(const std::string& caused_by) {
